@@ -1,8 +1,11 @@
+import logging
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseSettings(BaseSettings):
@@ -45,17 +48,43 @@ class DatabaseConnection:
     
     def __init__(self):
         self.settings = DatabaseSettings()
+        logger.debug(f"Database settings initialized: {self.settings.mongodb_url}")
     
     async def connect(self) -> None:
+        """Connect to MongoDB"""
         if self._client is None:
-            self._client = AsyncMongoClient(self.settings.mongodb_url)
-            self._database = self._client[self.settings.database_name]
+            try:
+                logger.debug("DEBUG: Creating AsyncMongoClient")
+                self._client = AsyncMongoClient(self.settings.mongodb_url)
+                logger.debug("DEBUG: Getting database reference")
+                self._database = self._client[self.settings.database_name]
+                
+                # Test the connection
+                logger.debug("DEBUG: Testing database connection with ping")
+                await self._client.admin.command('ping')
+                print("  ✅ Database connected")
+                logger.debug("DEBUG: Database ping successful")
+                
+            except Exception as e:
+                logger.error(f"❌ Database connection failed: {e}")
+                logger.debug("DEBUG: Exception during database connection")
+                raise
     
     async def disconnect(self) -> None:
+        """Disconnect from MongoDB"""
         if self._client:
-            await self._client.close()
-            self._client = None
-            self._database = None
+            try:
+                logger.debug("DEBUG: About to close MongoDB client")
+                # Close MongoDB client properly
+                await self._client.close()
+                logger.debug("DEBUG: MongoDB client closed")
+                self._client = None
+                self._database = None
+                print("  ✅ Database disconnected")
+                logger.debug("DEBUG: Database disconnect completed")
+            except Exception as e:
+                logger.error(f"❌ Database disconnect error: {e}")
+                logger.debug("DEBUG: Exception during database disconnect")
     
     @property
     def database(self) -> AsyncDatabase:

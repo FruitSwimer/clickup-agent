@@ -55,17 +55,52 @@ class AxleAgent(Agent):
         
 
     async def run(self, user_input: str, user_id: str, deps: AppDependencies = None, message_history: list[dict] = None) -> AgentRunResult:
-        async with super().run_mcp_servers():
-            message_history = await self.message_service.get_raw_messages(
-                session_id=user_id,
-            )
-            result = await super().run(user_input, deps=deps, message_history=message_history)
-            await self.message_service.save_agent_run(
-                session_id=user_id,
-                agent_run_result=result,
-                agent_id=self.agent_id,
-            )
+        """
+        Run the agent with proper MCP server lifecycle management.
+        Based on PydanticAI best practices.
+        """
+        result = None
+        try:
+            print("  🔌 Starting MCP servers...")
+            logger.debug("DEBUG: About to start MCP servers context manager")
+            
+            # Proper usage of run_mcp_servers context manager
+            async with super().run_mcp_servers():
+                print("  ✅ MCP servers ready")
+                logger.debug("DEBUG: MCP servers started successfully")
+                
+                logger.debug("DEBUG: About to get message history")
+                message_history = await self.message_service.get_raw_messages(
+                    session_id=user_id,
+                )
+                logger.debug(f"DEBUG: Retrieved {len(message_history) if message_history else 0} historical messages")
+                
+                print("  🧠 Processing with AI...")
+                logger.debug("DEBUG: About to call super().run() with AI processing")
+                result = await super().run(user_input, deps=deps, message_history=message_history)
+                logger.debug("DEBUG: AI processing completed, result obtained")
+                
+                print("  💾 Saving to database...")
+                logger.debug("DEBUG: About to save agent run to database")
+                await self.message_service.save_agent_run(
+                    session_id=user_id,
+                    agent_run_result=result,
+                    agent_id=self.agent_id,
+                )
+                logger.debug("DEBUG: Agent run saved to database successfully")
+                
+                print("  🔌 Closing MCP servers...")
+                logger.debug("DEBUG: About to exit MCP servers context manager")
+                # Context manager will exit here automatically
+            
+            # This line executes after the context manager closes
+            logger.debug("DEBUG: MCP servers context manager exited successfully")
             return result
+                
+        except Exception as e:
+            logger.error(f"❌ Agent run failed: {e}")
+            logger.debug("DEBUG: Exception caught in agent.run()")
+            raise
 
     async def get_agent_response(self, agent_run_result: AgentRunResult):
         """
@@ -90,9 +125,14 @@ ClickupAgent = None
 
 def create_clickup_agent():
     global ClickupAgent
-    ClickupAgent = AxleAgent(
-        agent_id="ClickupAgent",
-        system_prompt=(INSTRUCTIONS),
-        mcp_servers=[MCPServerClickup]
-    )
-    return ClickupAgent
+    try:
+        ClickupAgent = AxleAgent(
+            agent_id="ClickupAgent",
+            system_prompt=(INSTRUCTIONS),
+            mcp_servers=[MCPServerClickup]
+        )
+        print("  ✅ Agent created")
+        return ClickupAgent
+    except Exception as e:
+        logger.error(f"❌ Failed to create agent: {e}")
+        raise
