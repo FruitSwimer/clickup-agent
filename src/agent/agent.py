@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+from typing import Optional
 from pydantic_ai.agent import AgentRunResult
 from pydantic_core import to_json, to_jsonable_python
 from pydantic import BaseModel, Field
@@ -21,7 +22,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 class AxleAgent(Agent):
-    def __init__(self, agent_id: str, model: str = 'openai:gpt-4.1', deps_type= AppDependencies, system_prompt: str = "You are an helpfull AI agent working for AXLE AI.", instructions: str = None, tools: list = None, mcp_servers: list = None):
+    def __init__(self, agent_id: str, model: str = 'openai:gpt-4.1', deps_type= AppDependencies, system_prompt: str = "You are an helpfull AI agent working for AXLE AI.", instructions: str = None, tools: list = None, mcp_servers: list = None, message_history_limit: Optional[int] = None):
         
         default_tools = [
             AgentTools.get_current_datetime,
@@ -46,6 +47,7 @@ class AxleAgent(Agent):
         
         self.agent_id = agent_id
         self._message_service = None
+        self.message_history_limit = message_history_limit
     
     @property
     def message_service(self):
@@ -72,6 +74,7 @@ class AxleAgent(Agent):
                 logger.debug("DEBUG: About to get message history")
                 message_history = await self.message_service.get_raw_messages(
                     session_id=user_id,
+                    limit=self.message_history_limit
                 )
                 logger.debug(f"DEBUG: Retrieved {len(message_history) if message_history else 0} historical messages")
                 
@@ -126,12 +129,16 @@ ClickupAgent = None
 def create_clickup_agent():
     global ClickupAgent
     try:
+        # Get message history limit from database settings
+        message_limit = db_connection.settings.message_history_limit
+        
         ClickupAgent = AxleAgent(
             agent_id="ClickupAgent",
             system_prompt=(INSTRUCTIONS),
-            mcp_servers=[MCPServerClickup]
+            mcp_servers=[MCPServerClickup],
+            message_history_limit=message_limit
         )
-        print("  ✅ Agent created")
+        print(f"  ✅ Agent created with message history limit: {message_limit}")
         return ClickupAgent
     except Exception as e:
         logger.error(f"❌ Failed to create agent: {e}")

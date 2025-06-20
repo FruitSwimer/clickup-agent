@@ -121,8 +121,8 @@ class MessageService:
     async def get_session(self, session_id: str) -> Optional[AgentSession]:
         return await self.session_repo.find_by_session_id(session_id)
     
-    async def get_raw_messages(self, session_id: str) -> Optional[List[ModelMessage]]:
-        return await self.message_repo.get_messages_by_session_id(session_id)
+    async def get_raw_messages(self, session_id: str, limit: Optional[int] = None) -> Optional[List[ModelMessage]]:
+        return await self.message_repo.get_messages_by_session_id(session_id, limit)
     
     async def get_sessions_by_agent(
         self, 

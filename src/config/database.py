@@ -29,6 +29,11 @@ class DatabaseSettings(BaseSettings):
         env="AGENT_SESSIONS_COLLECTION",
         description="Collection name for agent sessions"
     )
+    message_history_limit: Optional[int] = Field(
+        default=10,
+        env="MESSAGE_HISTORY_LIMIT",
+        description="Maximum number of messages to send to the agent (0 for unlimited)"
+    )
     
     class Config:
         env_file = ".env"

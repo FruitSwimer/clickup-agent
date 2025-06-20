@@ -42,13 +42,26 @@ class ModelMessageRepository:
             logger.error(f"Failed to save messages for session {session_id}: {e}", exc_info=True)
             raise
     
-    async def get_messages_by_session_id(self, session_id: str) -> Optional[List[ModelMessage]]:
-        """Get all messages for a session"""
+    async def get_messages_by_session_id(self, session_id: str, limit: Optional[int] = None) -> Optional[List[ModelMessage]]:
+        """Get messages for a session with optional limit
+        
+        Args:
+            session_id: The session ID
+            limit: Maximum number of messages to return (0 or None for all messages)
+                  If limit > 0, returns the most recent messages
+        """
         document = await self.collection.find_one({"session_id": session_id})
         
         if document and "messages" in document:
             # Deserialize using ModelMessagesTypeAdapter
-            return ModelMessagesTypeAdapter.validate_python(document["messages"])
+            all_messages = ModelMessagesTypeAdapter.validate_python(document["messages"])
+            
+            # Apply limit if specified and greater than 0
+            if limit and limit > 0 and len(all_messages) > limit:
+                # Return the last 'limit' messages
+                return all_messages[-limit:]
+            
+            return all_messages
         
         return None
     
