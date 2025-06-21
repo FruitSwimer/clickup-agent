@@ -3,10 +3,14 @@ from datetime import datetime
 import uuid
 import json
 import logging
+import os
 from pydantic_ai.agent import AgentRunResult
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 
 logger = logging.getLogger(__name__)
+
+# Debug mode - set to False to disable detailed message logging
+DEBUG_MESSAGES = os.environ.get('DEBUG_MESSAGES', 'true').lower() == 'true'
 
 from ..models.messages import AgentSession
 from ..repositories.messages import ModelMessageRepository, AgentSessionRepository
@@ -41,6 +45,9 @@ class MessageService:
         else:
             new_messages = raw_messages_json
         
+        if DEBUG_MESSAGES:
+            logger.info(f"📦 Received {len(new_messages)} messages from agent run")
+        
         # Check if session exists
         existing_session = await self.session_repo.find_by_session_id(session_id)
         
@@ -49,6 +56,10 @@ class MessageService:
             # Get existing messages count to detect new ones
             existing_raw_messages = await self.message_repo.get_messages_by_session_id(session_id)
             existing_count = len(existing_raw_messages) if existing_raw_messages else 0
+            
+            if DEBUG_MESSAGES:
+                logger.info(f"🔄 Existing messages in DB: {existing_count}")
+                logger.info(f"🆕 New messages to process: {len(new_messages) - existing_count}")
             
             # Session exists - update with full conversation (pydantic-ai returns all messages)
             await self.message_repo.append_messages_to_session(session_id, new_messages)
@@ -88,7 +99,7 @@ class MessageService:
                     final_token_usage = existing_session.token_usage.dict() if existing_session.token_usage else None
                 
                 # Update session
-                await self.session_repo.update_session(
+                update_result = await self.session_repo.update_session(
                     session_id=session_id,
                     update_data={
                         "messages": [msg.dict() for msg in all_simple_messages],
@@ -96,6 +107,11 @@ class MessageService:
                         "token_usage": final_token_usage
                     }
                 )
+                
+                if DEBUG_MESSAGES:
+                    logger.info(f"✅ Session updated: {update_result}")
+                    logger.info(f"   Total simple messages: {len(all_simple_messages)}")
+                    logger.info(f"   New messages added: {len(new_simple_messages)}")
         else:
             logger.info(f"Creating new session: {session_id}")
             # New session - create it
@@ -104,6 +120,12 @@ class MessageService:
             simple_messages = self.transformer.transform_messages(new_messages)
             model_name = self.transformer.extract_model_info(new_messages)
             token_usage = self.transformer.aggregate_token_usage(new_messages)
+            
+            if DEBUG_MESSAGES:
+                logger.info(f"🆕 New session details:")
+                logger.info(f"   Messages saved: {len(new_messages)}")
+                logger.info(f"   Simple messages: {len(simple_messages)}")
+                logger.info(f"   Model: {model_name}")
             
             session = AgentSession(
                 session_id=session_id,
@@ -115,7 +137,10 @@ class MessageService:
                 metadata=metadata
             )
             
-            await self.session_repo.create_session(session)
+            result = await self.session_repo.create_session(session)
+            
+            if DEBUG_MESSAGES:
+                logger.info(f"✅ Session created successfully: {result}")
     
     
     async def get_session(self, session_id: str) -> Optional[AgentSession]:

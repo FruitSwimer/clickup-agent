@@ -3,6 +3,7 @@ import asyncio
 import logging
 import signal
 import sys
+import argparse
 
 from dotenv import load_dotenv
 
@@ -30,9 +31,12 @@ def setup_logging():
 
 logger = logging.getLogger(__name__)
 
-async def main():
+async def main(user_input=None):
     """Main application entry point"""
     print("🚀 Starting ClickUp Agent...")
+    
+    # Use provided user_input or default
+    input_text = user_input or "get workspace hierarchy"
     
     try:
         print("📝 Connecting to database...")
@@ -41,9 +45,9 @@ async def main():
         print("🤖 Creating agent...")
         clickup_agent = create_clickup_agent()
         
-        print("▶️  Running agent...")
+        print(f"▶️  Running agent with input: {input_text}")
         result = await clickup_agent.run(
-            user_input="get workspace hierarchy",
+            user_input=input_text,
             user_id="(123)",
         )
         
@@ -97,12 +101,17 @@ def signal_handler(signum, frame):
 if __name__ == '__main__':
     setup_logging()
     
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='ClickUp Agent CLI')
+    parser.add_argument('user_input', nargs='?', help='Input for the AI agent (default: "get workspace hierarchy")')
+    args = parser.parse_args()
+    
     # Set up signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        asyncio.run(main())
+        asyncio.run(main(args.user_input))
     except KeyboardInterrupt:
         logger.info("Application interrupted by user")
     except Exception as e:

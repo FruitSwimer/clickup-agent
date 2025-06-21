@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
+import os
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from ..models.messages import AgentSession
 from ..config.database import db_connection
@@ -8,6 +9,9 @@ from .base import BaseRepository
 from pymongo.asynchronous.collection import AsyncCollection
 
 logger = logging.getLogger(__name__)
+
+# Debug mode - set to False to disable detailed message logging
+DEBUG_MESSAGES = os.environ.get('DEBUG_MESSAGES', 'true').lower() == 'true'
 
 
 class ModelMessageRepository:
@@ -56,12 +60,24 @@ class ModelMessageRepository:
             # Deserialize using ModelMessagesTypeAdapter
             all_messages = ModelMessagesTypeAdapter.validate_python(document["messages"])
             
+            if DEBUG_MESSAGES:
+                logger.info(f"📛 Retrieved {len(all_messages)} total messages from DB for session {session_id}")
+            
             # Apply limit if specified and greater than 0
             if limit and limit > 0 and len(all_messages) > limit:
                 # Return the last 'limit' messages
-                return all_messages[-limit:]
+                limited_messages = all_messages[-limit:]
+                if DEBUG_MESSAGES:
+                    logger.info(f"🎯 Applied limit {limit}, returning last {len(limited_messages)} messages")
+                return limited_messages
+            
+            if DEBUG_MESSAGES and limit:
+                logger.info(f"📤 No limit applied (total messages {len(all_messages)} <= limit {limit})")
             
             return all_messages
+        
+        if DEBUG_MESSAGES:
+            logger.info(f"⚠️ No messages found for session {session_id}")
         
         return None
     
@@ -81,10 +97,18 @@ class ModelMessageRepository:
             # Only keep messages that are not already in the session
             existing_count = len(existing_messages)
             
+            if DEBUG_MESSAGES:
+                logger.info(f"🔄 Appending messages: existing={existing_count}, received={len(all_messages_from_run)}")
+            
             # The new messages are those after the existing ones
             if len(all_messages_from_run) > existing_count:
                 # Save all messages (the full conversation)
                 await self.save_messages_for_session(session_id, all_messages_from_run)
+                if DEBUG_MESSAGES:
+                    logger.info(f"✅ Updated session with {len(all_messages_from_run) - existing_count} new messages")
+            else:
+                if DEBUG_MESSAGES:
+                    logger.info(f"⏸️ No new messages to append")
             # If no new messages, don't update
     
     async def delete_session_messages(self, session_id: str) -> bool:

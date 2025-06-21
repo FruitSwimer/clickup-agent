@@ -21,6 +21,9 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Debug mode - set to False to disable detailed message logging
+DEBUG_MESSAGES = os.environ.get('DEBUG_MESSAGES', 'true').lower() == 'true'
+
 class AxleAgent(Agent):
     def __init__(self, agent_id: str, model: str = 'openai:gpt-4.1', deps_type= AppDependencies, system_prompt: str = "You are an helpfull AI agent working for AXLE AI.", instructions: str = None, tools: list = None, mcp_servers: list = None, message_history_limit: Optional[int] = None):
         
@@ -78,19 +81,58 @@ class AxleAgent(Agent):
                 )
                 logger.debug(f"DEBUG: Retrieved {len(message_history) if message_history else 0} historical messages")
                 
+                # Debug logging for message history
+                if DEBUG_MESSAGES and message_history:
+                    logger.info(f"🔍 Message History (limit={self.message_history_limit}):")
+                    logger.info(f"   Total messages retrieved: {len(message_history)}")
+                    for i, msg in enumerate(message_history):
+                        msg_type = type(msg).__name__
+                        content_preview = ""
+                        if hasattr(msg, 'parts') and msg.parts:
+                            content = str(msg.parts[0].content if hasattr(msg.parts[0], 'content') else msg.parts[0])
+                            content_preview = content[:100] + "..." if len(content) > 100 else content
+                        logger.info(f"   [{i+1}] {msg_type}: {content_preview}")
+                    logger.info(f"   ➡️  Sending these {len(message_history)} messages to the AI model")
+                
                 print("  🧠 Processing with AI...")
                 logger.debug("DEBUG: About to call super().run() with AI processing")
+                
+                # Log the user input
+                if DEBUG_MESSAGES:
+                    logger.info(f"📝 User Input: {user_input[:200]}..." if len(user_input) > 200 else f"📝 User Input: {user_input}")
+                
                 result = await super().run(user_input, deps=deps, message_history=message_history)
                 logger.debug("DEBUG: AI processing completed, result obtained")
                 
+                # Log the AI response
+                if DEBUG_MESSAGES:
+                    response_text = await self.get_agent_response(result)
+                    if response_text:
+                        logger.info(f"🤖 AI Response: {response_text[:200]}..." if len(response_text) > 200 else f"🤖 AI Response: {response_text}")
+                
                 print("  💾 Saving to database...")
                 logger.debug("DEBUG: About to save agent run to database")
+                
+                # Log before saving
+                if DEBUG_MESSAGES:
+                    all_messages = result.all_messages()
+                    logger.info(f"💾 Saving conversation to database:")
+                    logger.info(f"   Session ID: {user_id}")
+                    logger.info(f"   Total messages in result: {len(all_messages)}")
+                    logger.info(f"   New messages to save: {len(all_messages) - (len(message_history) if message_history else 0)}")
+                
                 await self.message_service.save_agent_run(
                     session_id=user_id,
                     agent_run_result=result,
                     agent_id=self.agent_id,
                 )
                 logger.debug("DEBUG: Agent run saved to database successfully")
+                
+                # Verify save
+                if DEBUG_MESSAGES:
+                    # Check if messages were saved
+                    saved_messages = await self.message_service.get_raw_messages(user_id)
+                    logger.info(f"✅ Verification - Total messages now in database: {len(saved_messages) if saved_messages else 0}")
                 
                 print("  🔌 Closing MCP servers...")
                 logger.debug("DEBUG: About to exit MCP servers context manager")
